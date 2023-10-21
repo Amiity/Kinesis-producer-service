@@ -1,0 +1,55 @@
+name: 'AWS AMI Build'
+
+on: [workflow_call]
+
+
+env:
+  PRODUCT_VERSION: "1.8.6" # or: "latest"
+
+jobs:
+  packer:
+    runs-on: ["self-hosted","amit-runner"]
+    name: AMI Build
+    defaults:
+      run:
+        working-directory: packer
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+         # role-to-assume: ${{ vars.AWS_PROD_ROLE }}
+         # role-session-name: amiity-cdc-golden-ami-build
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_DCE }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_DCE }}
+          aws-region: us-east-1
+
+      - name: Install AWS CLI and SSM Plugin
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+          curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+          sudo dpkg -i session-manager-plugin.deb
+
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        id: setup
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: Packer Init
+        run: packer init ../packer/cdc-image.pkr.hcl
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+
+      - name: Validate Template
+        run: packer validate -syntax-only ../packer/cdc-image.pkr.hcl
+
+      - name: Packer Build
+        run: packer build -color=false -on-error=cleanup ../packer/cdc-image.pkr.hcl
+
