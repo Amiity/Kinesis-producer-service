@@ -1,0 +1,55 @@
+
+
+name: 'Build AMI and Launch EC2'
+
+on:
+  # schedule:
+  #   - cron: '0 4 * * *'
+  push:
+    branches:
+      - US1107247
+    workflow_dispatch:
+
+jobs:
+ # build:
+ #   uses: ./.github/workflows/build-ami.yml
+ #   secrets: inherit
+
+  qa3:
+    uses: ./.github/workflows/instance-template.yml
+ #   needs: build
+    secrets: inherit
+    with:
+      instanceProfileName: 'cdc-instance-profile'
+      environment: 'qa3'
+      instanceName: 'change-data-capture-qa3'
+
+  qa2:
+    uses: ./.github/workflows/instance-template.yml
+    needs: qa3
+    secrets: inherit
+    with:
+      instanceProfileName: 'cdc-instance-profile'
+      environment: 'qa2'
+      instanceName: 'change-data-capture-qa2'
+
+  uat:
+    uses: ./.github/workflows/instance-template.yml
+    needs: qa2
+    secrets: inherit
+    with:
+      instanceProfileName: 'cdc-instance-profile'
+      environment: 'uat'
+      instanceName: 'change-data-capture-uat'
+
+  prod:
+    uses: ./.github/workflows/instance-template.yml
+    needs: uat
+    secrets: inherit
+    with:
+      instanceProfileName: 'cdc-instance-profile'
+      environment: 'prod'
+      instanceName: 'change-data-capture-prod'
+
+
+

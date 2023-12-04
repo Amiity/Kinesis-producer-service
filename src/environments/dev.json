@@ -1,0 +1,10 @@
+{
+  "database": {
+    "hostname": "",
+    "port": 3306,
+    "username": "cdcuser"
+  },
+  "kinesis": {
+    "stream_name": "amiity-cdc-prod-stream"
+  }
+}

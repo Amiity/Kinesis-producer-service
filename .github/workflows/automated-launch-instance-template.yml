@@ -1,0 +1,103 @@
+
+name: 'AWS EC2 Build'
+
+on:
+  workflow_call:
+    inputs:
+      instanceProfileName:
+        required: true
+        type: string
+      instanceName:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      awsRegion:
+        required: false
+        type: string
+        default: "us-east-1"
+
+jobs:
+  launch_ec2:
+    name: Launch ${{ inputs.environment }}
+    runs-on: [ "self-hosted","amit-runner" ]
+    environment:
+      name: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_DCE }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_DCE }}
+          # role-to-assume: ${{ vars.SUBRO_AWS_PROD_ROLE }}
+          # role-session-name: amiity-cdc-ec2-launch
+          aws-region: us-east-1
+
+      - name: Install AWS CLI and SSM Plugin
+        run: |
+          sudo apt-get update
+          sudo apt-get install expect -qq > /dev/null;
+          sudo apt-get install -y awscli
+          curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+          sudo dpkg -i session-manager-plugin.deb
+
+      - name: Read old Instance Id
+        id: old-instance-id
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances --region ${{ inputs.awsRegion }} \
+            --filters 'Name=tag:Name,Values=${{ inputs.instanceName }}' 'Name=instance-state-name,Values=running' \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output text)
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      - name: Read AMI Id
+        id: read-image-id
+        run: |
+          LATEST_AMI_ID=$(aws ec2 describe-images \
+            --region ${{ inputs.awsRegion }} \
+            --owners "8597097790" \
+            --filters "Name=tag:AppName,Values=CDC" \
+            --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
+            --output text)
+          echo "LATEST_AMI_ID=$LATEST_AMI_ID" >> $GITHUB_OUTPUT
+
+      - name: Launch EC2
+        run: |
+          aws ec2 run-instances \
+            --image-id ${{ steps.read-image-id.outputs.LATEST_AMI_ID }} \
+            --instance-type t2.micro \
+            --subnet-id subnet-0b60cc8bd463018 \
+            --security-group-ids sg-0f86315fef1b654 \
+            --iam-instance-profile Name=${{ inputs.instanceProfileName }} \
+            --associate-public-ip-address \
+            --count 1 \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value= ${{ inputs.instanceName }}},{Key=Product,Value=amiity},{Key=AppName,Value=CDC},{Key=Environment,Value= ${{ inputs.environment }}}]' \
+
+      - name: Read Instance Id
+        id: instance-id
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances --region ${{ inputs.awsRegion }} \
+            --filters 'Name=tag:Name,Values=${{ inputs.instanceName }}' \
+            --query 'sort_by(Reservations[].Instances[], &LaunchTime)[-1].InstanceId' \
+            --output text)
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      - name: Run script
+        run: |
+          sleep 180 && aws ssm send-command --region ${{ inputs.awsRegion }} \
+          --instance-ids ${{ steps.instance-id.outputs.INSTANCE_ID }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters commands='["cd /amiity/cdc/src/" ,"python3 binary_log_producer.py ${{ inputs.environment }} > log_producer.out"]'
+
+      - name: Terminate old instance
+        if: steps.old-instance-id.outputs.INSTANCE_ID != ''
+        run: |
+          aws ec2 terminate-instances  --region ${{ inputs.awsRegion }} --instance-ids ${{ steps.old-instance-id.outputs.INSTANCE_ID }}
+
