@@ -8,6 +8,30 @@ Snapshot: A point-in-time, read-only copy of the base blob.
 Versioning: Automatically keeps track of every modification to the blob and provides access to earlier versions.
 
 
+| **Feature**     | **Base Blob**                                      | **Snapshot**                                           | **Versioning**                                                            |
+|----------------|-----------------------------------------------------|--------------------------------------------------------|---------------------------------------------------------------------------|
+| **Purpose**     | Active, current version of the blob                 | Read-only copy of the blob at a specific time          | Tracks and stores every change to the blob                                |
+| **Modification**| Can be modified directly                            | Cannot be modified after creation                      | Automatically created when the base blob is modified                      |
+| **Use Cases**   | General data storage, active files                  | Backup, restore points                                 | Automatic version history, revert changes                                |
+| **Storage**     | Regular storage                                     | Shares storage with the base blob                      | Separate storage per version, independent of base blob                   |
+| **Access**      | Read/write operations                               | Read-only operations                                   | Read/write operations for the latest version; can access previous versions |
+| **Deletion**    | Can be deleted                                      | Can be deleted independently of the base blob          | Can delete individual versions                                            |
+
+
+| **Field**                                   | **Description**                                                   | **Constraints / Notes**                                                                 |
+|--------------------------------------------|-------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `storage_account_id`                       | ID of the target storage account                                  | **Required**                                                                             |
+| `name` (in rule)                           | Name of the lifecycle rule                                        | **Required**                                                                             |
+| `enabled`                                  | Enable or disable the rule                                        | **Required (Boolean)**                                                                   |
+| `prefix_match`                             | Blob name prefixes to match                                       | Optional; can be used with `match_blob_index_tag`                                        |
+| `blob_types`                               | Types of blobs (e.g., `blockBlob`)                                | **Required**                                                                             |
+| `match_blob_index_tag`                     | Tag-based filters                                                 | Optional; supports `name`, `operation`, and `value`                                      |
+| `tier_to_cool_after_days_*`                | Tier blob to cool                                                 | Only one allowed per rule                                                                |
+| `tier_to_archive_after_days_*`             | Tier blob to archive                                              | Only one allowed per rule                                                                |
+| `tier_to_cold_after_days_*`                | Tier blob to cold                                                 | Only one allowed per rule                                                                |
+| `delete_after_days_*`                      | Delete blob                                                       | Only one allowed per rule; requires `last_access_time_enabled` if using access-based     |
+| `auto_tier_to_hot_from_cool_enabled`       | Auto rehydrate to hot tier if accessed                            | Must be used with `tier_to_cool_after_days_since_last_access_time_greater_than`         |
+| `last_access_time_enabled` (Storage Account setting) | Enable last access tracking                           | Required to use any `*_last_access_time_*` fields                                        |
 
 
 
