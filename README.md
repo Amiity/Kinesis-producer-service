@@ -259,7 +259,7 @@ resource "azurerm_storage_management_policy" "example" {
 Let me know if you’d like this as a downloadable PDF or Confluence import format.
 
 
-🧱 Step 1: Create variables.tf
+Step 1: Create variables.tf
 Define a variable that can hold multiple rules:
 
 hcl
@@ -297,6 +297,8 @@ variable "lifecycle_rules" {
     })
   }))
 }
+
+
 🧪 Step 2: Add Sample terraform.tfvars
 hcl
 Copy
