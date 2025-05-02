@@ -257,3 +257,152 @@ resource "azurerm_storage_management_policy" "example" {
 }
 
 Let me know if you’d like this as a downloadable PDF or Confluence import format.
+
+
+🧱 Step 1: Create variables.tf
+Define a variable that can hold multiple rules:
+
+hcl
+Copy
+Edit
+variable "lifecycle_rules" {
+  description = "List of lifecycle management rules for blob storage"
+  type = list(object({
+    name    = string
+    enabled = bool
+    prefix_match = list(string)
+    blob_types   = list(string)
+    match_blob_index_tag = optional(object({
+      name      = string
+      operation = string
+      value     = string
+    }))
+    actions = object({
+      base_blob = optional(object({
+        tier_to_cool_after_days    = optional(number)
+        tier_to_archive_after_days = optional(number)
+        delete_after_days          = optional(number)
+      }))
+      snapshot = optional(object({
+        change_tier_to_archive_after_days = optional(number)
+        change_tier_to_cool_after_days    = optional(number)
+        delete_after_days                 = optional(number)
+        delete_after_days_since_creation_greater_than = optional(number)
+      }))
+      version = optional(object({
+        change_tier_to_archive_after_days = optional(number)
+        change_tier_to_cool_after_days    = optional(number)
+        delete_after_days                 = optional(number)
+      }))
+    })
+  }))
+}
+🧪 Step 2: Add Sample terraform.tfvars
+hcl
+Copy
+Edit
+lifecycle_rules = [
+  {
+    name    = "rule1"
+    enabled = true
+    prefix_match = ["container1/prefix1"]
+    blob_types   = ["blockBlob"]
+    match_blob_index_tag = {
+      name      = "tag1"
+      operation = "=="
+      value     = "val1"
+    }
+    actions = {
+      base_blob = {
+        tier_to_cool_after_days    = 10
+        tier_to_archive_after_days = 50
+        delete_after_days          = 100
+      }
+      snapshot = {
+        delete_after_days_since_creation_greater_than = 30
+      }
+    }
+  },
+  {
+    name    = "rule2"
+    enabled = false
+    prefix_match = ["container2/prefix1", "container2/prefix2"]
+    blob_types   = ["blockBlob"]
+    actions = {
+      base_blob = {
+        tier_to_cool_after_days    = 11
+        tier_to_archive_after_days = 51
+        delete_after_days          = 101
+      }
+      snapshot = {
+        change_tier_to_archive_after_days = 90
+        change_tier_to_cool_after_days    = 23
+        delete_after_days                 = 31
+      }
+      version = {
+        change_tier_to_archive_after_days = 9
+        change_tier_to_cool_after_days    = 90
+        delete_after_days                 = 3
+      }
+    }
+  }
+]
+🔁 Step 3: Create the Resource Using dynamic "rule" (Main Code)
+hcl
+Copy
+Edit
+resource "azurerm_storage_management_policy" "example" {
+  storage_account_id = azurerm_storage_account.example.id
+
+  dynamic "rule" {
+    for_each = var.lifecycle_rules
+    content {
+      name    = rule.value.name
+      enabled = rule.value.enabled
+
+      filters {
+        prefix_match = rule.value.prefix_match
+        blob_types   = rule.value.blob_types
+
+        dynamic "match_blob_index_tag" {
+          for_each = rule.value.match_blob_index_tag != null ? [rule.value.match_blob_index_tag] : []
+          content {
+            name      = match_blob_index_tag.value.name
+            operation = match_blob_index_tag.value.operation
+            value     = match_blob_index_tag.value.value
+          }
+        }
+      }
+
+      actions {
+        dynamic "base_blob" {
+          for_each = rule.value.actions.base_blob != null ? [rule.value.actions.base_blob] : []
+          content {
+            tier_to_cool_after_days_since_modification_greater_than    = lookup(base_blob.value, "tier_to_cool_after_days", null)
+            tier_to_archive_after_days_since_modification_greater_than = lookup(base_blob.value, "tier_to_archive_after_days", null)
+            delete_after_days_since_modification_greater_than          = lookup(base_blob.value, "delete_after_days", null)
+          }
+        }
+
+        dynamic "snapshot" {
+          for_each = rule.value.actions.snapshot != null ? [rule.value.actions.snapshot] : []
+          content {
+            change_tier_to_archive_after_days_since_creation = lookup(snapshot.value, "change_tier_to_archive_after_days", null)
+            change_tier_to_cool_after_days_since_creation    = lookup(snapshot.value, "change_tier_to_cool_after_days", null)
+            delete_after_days_since_creation_greater_than    = lookup(snapshot.value, "delete_after_days_since_creation_greater_than", null)
+            delete_after_days                                 = lookup(snapshot.value, "delete_after_days", null)
+          }
+        }
+
+        dynamic "version" {
+          for_each = rule.value.actions.version != null ? [rule.value.actions.version] : []
+          content {
+            change_tier_to_archive_after_days_since_creation = lookup(version.value, "change_tier_to_archive_after_days", null)
+            change_tier_to_cool_after_days_since_creation    = lookup(version.value, "change_tier_to_cool_after_days", null)
+            delete_after_days                                 = lookup(version.value, "delete_after_days", null)
+          }
+        }
+      }
+    }
+  }
+}
