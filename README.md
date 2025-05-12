@@ -408,3 +408,60 @@ resource "azurerm_storage_management_policy" "example" {
     }
   }
 }
+
+
+
+
+dynamic "snapshot" {
+  for_each = contains(keys(local.snapshot_args), rule.value.name) ? [true] : []
+  content {
+    # Only insert fields if they exist — still must be hardcoded here due to Terraform limits
+    delete_after_days_since_creation_greater_than = (
+      contains(keys(local.snapshot_args[rule.value.name]), "delete_after_days_since_creation_greater_than")
+      ? local.snapshot_args[rule.value.name]["delete_after_days_since_creation_greater_than"]
+      : null
+    )
+    change_tier_to_cool_after_days_since_creation = (
+      contains(keys(local.snapshot_args[rule.value.name]), "change_tier_to_cool_after_days_since_creation")
+      ? local.snapshot_args[rule.value.name]["change_tier_to_cool_after_days_since_creation"]
+      : null
+    )
+    change_tier_to_archive_after_days_since_creation = (
+      contains(keys(local.snapshot_args[rule.value.name]), "change_tier_to_archive_after_days_since_creation")
+      ? local.snapshot_args[rule.value.name]["change_tier_to_archive_after_days_since_creation"]
+      : null
+    )
+  }
+}
+
+
+management_policy_rules = [
+  {
+    name    = "rule1"
+    enabled = true
+    actions = {
+      snapshot = [
+        {
+          field  = "delete_after_days_since_creation_greater_than"
+          equals = 30
+        },
+        {
+          field  = "change_tier_to_cool_after_days_since_creation"
+          equals = 15
+        }
+      ]
+    }
+  }
+]
+
+
+locals {
+  snapshot_args = {
+    for rule in var.management_policy_rules :
+    rule.name => {
+      for f in try(rule.actions.snapshot, []) :
+      f.field => f.equals
+    }
+  }
+}
+
